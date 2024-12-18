@@ -172,7 +172,7 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
         model = AutoModelForCausalLM.from_pretrained(
             modelpath,    
             torch_dtype=torch.bfloat16,
-            device_map="auto", token='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',
+            device_map="auto", token=hf_token,
             
             #attn_implementation="flash_attention_2",  # make sure to have flash-attn pip-installed
         )
