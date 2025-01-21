@@ -128,6 +128,34 @@ class WeightedCELossTrainer(Trainer):
  
 
 
+class CustomTrainer(Trainer):
+    def __init__(self, *args, class_weights=None, **kwargs):
+        print(args)
+        super().__init__(*args, **kwargs)
+        # Ensure label_weights is a tensor
+        print(self.args.device)
+        if class_weights is not None:
+            self.class_weights = torch.tensor(class_weights, dtype=torch.float32).to(self.args.device)
+        else:
+            self.class_weights = None
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        # Extract labels and convert them to long type for cross_entropy
+        labels = inputs.pop("labels").long()
+
+        # Forward pass
+        outputs = model(**inputs)
+
+        # Extract logits assuming they are directly outputted by the model
+        logits = outputs.get('logits')
+
+        # Compute custom loss with class weights for imbalanced data handling
+        if self.class_weights is not None:
+            loss = F.cross_entropy(logits, labels, weight=self.class_weights)
+        else:
+            loss = F.cross_entropy(logits, labels)
+
+        return (loss, outputs) if return_outputs else loss
 
 
 class CustomCallback(TrainerCallback):
@@ -145,31 +173,52 @@ class CustomCallback(TrainerCallback):
 
         
 def set_llama_model(llama_checkpoint,hfToken="", ty='class'):
-    #set up llama model
-    if ty=='class':
-        llama_model =  LlamaForSequenceClassification.from_pretrained(
-            llama_checkpoint,
-            device_map={"": 0},
-            token=hfToken
-        )
-    elif ty=='question':
-        llama_model =  LlamaForQuestionAnswering.from_pretrained(
-            llama_checkpoint,
-            device_map={"": 0},
-            token=hfToken
-        )
-    llama_model.config.pad_token_id = llama_model.config.eos_token_id
-    #LoRA
-    llama_peft_config = LoraConfig(
-        task_type=TaskType.SEQ_CLS, r=16, lora_alpha=16, lora_dropout=0.05, bias="none", 
-        target_modules=[
-            "q_proj",
-            "v_proj",  
-        ],
+    from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        BitsAndBytesConfig,
+        TrainingArguments,
+        Trainer,
+        DataCollatorWithPadding
     )
-    llama_model = get_peft_model(llama_model, llama_peft_config)
+    lora_config = LoraConfig(
+        r = 16, # the dimension of the low-rank matrices
+        lora_alpha = 8, # scaling factor for LoRA activations vs pre-trained weight activations
+        target_modules = ['q_proj', 'k_proj', 'v_proj', 'o_proj'],
+        lora_dropout = 0.05, # dropout probability of the LoRA layers
+        bias = 'none', # wether to train bias weights, set to 'none' for attention layers
+        task_type = 'SEQ_CLS'
+    )
+
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit = True, # enable 4-bit quantization
+        bnb_4bit_quant_type = 'nf4', # information theoretically optimal dtype for normally distributed weights
+        bnb_4bit_use_double_quant = True, # quantize quantized weights //insert xzibit meme
+        bnb_4bit_compute_dtype = torch.bfloat16 # optimized fp format for ML
+    )
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        quantization_config=quantization_config,
+        num_labels=2,
+        token='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'
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)
+
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token = tokenizer.eos_token
+    model = prepare_model_for_kbit_training(model)
+    model = get_peft_model(model, lora_config)
+    #llama_model = get_peft_model(llama_model, llama_peft_config)
     llama_model.print_trainable_parameters()
     llama_model = llama_model.cuda()
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.use_cache = False
+    model.config.pretraining_tp = 1
+
     return llama_model
 
 
@@ -189,33 +238,26 @@ def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_
     batch_size = 16
     
     training_args = TrainingArguments(
-        output_dir="llama-lora-token-classification",
-        learning_rate=lr,
-        lr_scheduler_type= "cosine",
-        warmup_ratio= 0.1,
-        max_grad_norm= 0.3,
-        per_device_train_batch_size=batch_size,
-        per_device_eval_batch_size=batch_size,
-        num_train_epochs=num_epochs,
-        weight_decay=0.001,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        fp16=True,
-        gradient_checkpointing=True,
-        logging_steps=10,
-        report_to='none',
+        output_dir = 'QCnoPrompt{}'.format(seed),
+        learning_rate = 1e-4,
+        per_device_train_batch_size = 8,
+        per_device_eval_batch_size = 8,
+        num_train_epochs = 2,
+        weight_decay = 0.01,
+        evaluation_strategy = 'epoch',
+        save_strategy = 'epoch',
+        load_best_model_at_end = True
     )
-    
-    llama_trainer = WeightedCELossTrainer(
-        weights = [neg_weights, pos_weights],
-        model=llama_model,
-        args=training_args,
-        train_dataset=llama_tokenized_datasets['train'],
-        eval_dataset=llama_tokenized_datasets["test"],
-        data_collator=llama_data_collator,
-        compute_metrics=compute_metrics
-    )
+    trainer = CustomTrainer(
+        model = model,
+        args = training_args,
+        train_dataset = dataset['train'],
+        eval_dataset = dataset['val'],
+        tokenizer = tokenizer,
+        data_collator = collate_fn,
+        compute_metrics = compute_metrics,
+        class_weights=class_weights,
+)
     llama_trainer.add_callback(CustomCallback(llama_trainer))
     llama_trainer.train()
     return llama_trainer

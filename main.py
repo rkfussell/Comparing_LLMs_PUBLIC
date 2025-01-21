@@ -30,6 +30,7 @@ import scipy
 from prompts import *
 from scipy.special import softmax
 from peft import get_peft_model, LoraConfig, TaskType
+from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 
 import pickle
 
@@ -54,7 +55,7 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
     batch_size = 16 
     
 
-    llama_checkpoint = "meta-llama/Llama-2-7b-hf"
+    llama_checkpoint = "meta-llama/Meta-Llama-3-8B"
     
     
     df_full = pd.DataFrame()
@@ -107,8 +108,27 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
             MAX_LEN = 512 
             prompts=getPrompts()
             llama_tokenized_datasets, llama_data_collator, llama_tokenizer = lu.tokenize_for_llama(llama_checkpoint, data, col_to_delete, MAX_LEN, prompt=prompts[prompt], hfToken=hfToken)
+            class_weights=(1/train['target'].value_counts(normalize=True).sort_index()).tolist()
+            class_weights=torch.tensor(class_weights)
+            class_weights=class_weights/class_weights.sum()
+            train_inputs, train_masks = dataset(train)
+            y_train=train['target'].values
+            val_inputs, val_masks = dataset(val)
+            y_val=val['target'].values
+            train_labels = torch.tensor(y_train.astype(np.int64), dtype=torch.int64)
+            val_labels = torch.tensor(y_val.astype(np.int64))
+            batch_size = 32
+            train_dataloader=Dataset.from_dict({'label':train_labels,  'input_ids':train_inputs, 'attention_mask':train_masks})
+            val_dataloader=Dataset.from_dict({'label':val_labels,  'input_ids':val_inputs, 'attention_mask':val_masks})
+            dataset = DatasetDict({
+                'train': train_dataloader,
+                'val': val_dataloader,
+                'test': val_dataloader
+            })
             print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
             llama_model = lu.set_llama_model(llama_checkpoint, hfToken)
+            
+            
             llama_trainer = lu.train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_weights, neg_weights)
             llama_model=llama_model.eval()
             if saveModel:
@@ -458,7 +478,7 @@ def apply_to_uncoded(seed=0,code = "QC", evalLlama=True, holdoutDir='holdout', h
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     MAX_LEN_BERT = bu.get_max_len_bert(tokenizer, test, all_data_df, include_val=True)
 
-    llama_checkpoint = "meta-llama/Llama-2-7b-hf"
+    llama_checkpoint = "meta-llama/Meta-Llama-3-8B"
     col_to_delete = ['Sentences']
     MAX_LEN = 512 
     prompts=getPrompts()
