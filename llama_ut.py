@@ -223,16 +223,6 @@ def set_llama_model(llama_checkpoint,hfToken="", ty='class'):
 
 
 
-
-
-
-
-
-
-
-
-
-
 def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_weights, neg_weights,num_epochs = 5):
     lr = 1e-4
     batch_size = 16

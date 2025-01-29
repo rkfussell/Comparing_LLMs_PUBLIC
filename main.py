@@ -39,7 +39,7 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
     
     ut.set_seed((seed))
     train, val, test= du.getData(dataDir=dataDir, holdoutDir=holdoutDir,ValCutoff=ValCutoff)
-    
+    print(train.columns)
     
     
     if torch.cuda.is_available():
@@ -71,6 +71,7 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
         #TRAIN
         #Prepare x and y for training set 
         y_train = du.get_y(code, current_training_set)
+        y_val = du.get_y(code, val)
         #for bow:
         print("Optimizing Bag of Words") 
         
@@ -104,17 +105,17 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
             print("Training Llama.  This may take a while.") 
         
             pos_weights, neg_weights, max_words, data, col_to_delete = lu.preprocessing_for_llama(code, current_training_set, val)
-            
             MAX_LEN = 512 
             prompts=getPrompts()
             llama_tokenized_datasets, llama_data_collator, llama_tokenizer = lu.tokenize_for_llama(llama_checkpoint, data, col_to_delete, MAX_LEN, prompt=prompts[prompt], hfToken=hfToken)
-            class_weights=(1/train['target'].value_counts(normalize=True).sort_index()).tolist()
-            class_weights=torch.tensor(class_weights)
-            class_weights=class_weights/class_weights.sum()
+            
+            #class_weights=(1/train['target'].value_counts(normalize=True).sort_index()).tolist()
+            #class_weights=torch.tensor(class_weights)
+            #class_weights=class_weights/class_weights.sum()
             train_inputs, train_masks = dataset(train)
-            y_train=train['target'].values
+            #y_train=train['target'].values
             val_inputs, val_masks = dataset(val)
-            y_val=val['target'].values
+            #y_val=val['target'].values
             train_labels = torch.tensor(y_train.astype(np.int64), dtype=torch.int64)
             val_labels = torch.tensor(y_val.astype(np.int64))
             batch_size = 32
@@ -373,7 +374,7 @@ def loadModel(model,path, hfToken=''):
         model.load_state_dict(state_dict=torch.load(path))
         model.eval()
     elif model=='llama':
-        llama_checkpoint = "meta-llama/Llama-2-7b-hf"
+        llama_checkpoint = "meta-llama/Meta-Llama-3-8B"
         llama_model =  LlamaForSequenceClassification.from_pretrained(
             llama_checkpoint,
             device_map={"": 0},
@@ -446,7 +447,7 @@ def apply_to_uncoded(seed=0,code = "QC", evalLlama=True, holdoutDir='holdout', h
     ut.set_seed(seed)
 
     testFiles=os.listdir(holdoutDir)
-    test=du.dataframe(testFiles, prompt=None, dataDir=holdoutDir)
+    test=du.dataframe(testFiles, prompt="", dataDir=holdoutDir)
     test['Sentences'] = test['Sentences'].astype(str)
     
     if torch.cuda.is_available():

@@ -36,7 +36,7 @@ Clarifying note: the following are excluded from rule a
 1. Pointing to the data without a comparison (e.g., we fit a line to the data or the data are in Figure 2) 
 2. describing the data without a comparison (e.g., the data are linear) to not meet this rule
  Answer with just yes or no. \n<</SYS>>\n [INST]\n ''',
-        "A":None,
+        "A":"",
         "J":"<<SYS>>\nAnalyze the sentence given. Does the sentence demonstrate a quantitative comparison between data, best fit lines etc? \n<</SYS>>\n [INST]\n ",
 
         "B": "<<SYS>>\nAnalyze the sentence given. Does the sentence demonstrate a suggestion of additional rounds of experimentation and/or improvements? For example, 'Next time, we will improve by taking more trials'. Answer with just yes or no. \n<</SYS>>\n [INST]\n "}
