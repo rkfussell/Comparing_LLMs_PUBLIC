@@ -112,9 +112,9 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
             #class_weights=(1/train['target'].value_counts(normalize=True).sort_index()).tolist()
             #class_weights=torch.tensor(class_weights)
             #class_weights=class_weights/class_weights.sum()
-            train_inputs, train_masks = dataset(train)
+            train_inputs, train_masks = lu.dataset(train,llama_tokenizer)
             #y_train=train['target'].values
-            val_inputs, val_masks = dataset(val)
+            val_inputs, val_masks = lu.dataset(val,llama_tokenizer)
             #y_val=val['target'].values
             train_labels = torch.tensor(y_train.astype(np.int64), dtype=torch.int64)
             val_labels = torch.tensor(y_val.astype(np.int64))
@@ -386,7 +386,6 @@ def loadModel(model,path, hfToken=''):
         model.eval()
     return model 
         
-
 
 def single_trial_BoW(s, code, test_bank, vectorizer,bow_model, p_test, n):
     ut.set_seed(s)

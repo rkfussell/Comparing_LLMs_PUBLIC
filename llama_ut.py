@@ -254,7 +254,27 @@ def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_
 
 
 
-
+def dataset(data, tokenizer):
+    MAX_LEN=512
+    input_ids=[]
+    attn_masks=[]
+    data=data['Sentences']
+    
+    for abstract in data:
+        encoded_sent = tokenizer.encode_plus(
+            text="{}".format(abstract),  # Preprocess sentence
+            add_special_tokens=True,        # Add `[CLS]` and `[SEP]`
+            max_length=MAX_LEN,                  # Max length to truncate/pad
+            pad_to_max_length=True,         # Pad sentence to max length
+            #return_tensors='pt',           # Return PyTorch tensor
+            return_attention_mask=True      # Return attention mask
+            )
+        # Add the outputs to the lists
+        input_ids.append(encoded_sent.get('input_ids'))
+        attn_masks.append(encoded_sent.get('attention_mask'))
+    input_ids = torch.tensor(input_ids)
+    attn_masks = torch.tensor(attn_masks)
+    return input_ids, attn_masks
 
 
 
