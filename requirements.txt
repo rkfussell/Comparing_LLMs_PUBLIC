@@ -18,3 +18,4 @@ nltk
 peft
 jupyter 
 evaluate
+bitsandbytes
