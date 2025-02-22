@@ -108,14 +108,14 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
             MAX_LEN = 512 
             prompts=getPrompts()
             llama_tokenized_datasets, llama_data_collator, llama_tokenizer = lu.tokenize_for_llama(llama_checkpoint, data, col_to_delete, MAX_LEN, prompt=prompts[prompt], hfToken=hfToken)
-            
-            #class_weights=(1/train['target'].value_counts(normalize=True).sort_index()).tolist()
-            #class_weights=torch.tensor(class_weights)
-            #class_weights=class_weights/class_weights.sum()
+            ## Temporary note: I had commented out the 3 lines below, and every line with train['target'], because I was getting an error. But now I am uncommenting because we need to find a way to feed class_weights into the lu.train_llama() line below so I will debug
+            class_weights=(1/train[code].value_counts(normalize=True).sort_index()).tolist()
+            class_weights=torch.tensor(class_weights)
+            class_weights=class_weights/class_weights.sum()
             train_inputs, train_masks = lu.dataset(train,llama_tokenizer)
-            #y_train=train['target'].values
+            y_train=train[code].values
             val_inputs, val_masks = lu.dataset(val,llama_tokenizer)
-            #y_val=val['target'].values
+            y_val=val[code].values
             train_labels = torch.tensor(y_train.astype(np.int64), dtype=torch.int64)
             val_labels = torch.tensor(y_val.astype(np.int64))
             batch_size = 32
@@ -129,8 +129,7 @@ def runTest(seed=0,code='QC',evalLlama=True, LlamaChatbot = False, dataDir='xlsx
             print("torch.cuda.memory_allocated: %fGB"%(torch.cuda.memory_allocated(0)/1024/1024/1024))
             llama_model = lu.set_llama_model(llama_checkpoint, hfToken)
             
-            
-            llama_trainer = lu.train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_weights, neg_weights)
+            llama_trainer = lu.train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, llama_tokenizer, class_weights,seed)
             llama_model=llama_model.eval()
             if saveModel:
                 llama_model.save_pretrained(saveModelPath+'/llamaAdapter')

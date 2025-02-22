@@ -199,34 +199,33 @@ def set_llama_model(llama_checkpoint,hfToken="", ty='class'):
     )
 
     model = AutoModelForSequenceClassification.from_pretrained(
-        model_name,
+        llama_checkpoint,
         quantization_config=quantization_config,
         num_labels=2,
         token='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'
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)
+    tokenizer = AutoTokenizer.from_pretrained(llama_checkpoint, add_prefix_space=True)
 
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
     model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, lora_config)
     #llama_model = get_peft_model(llama_model, llama_peft_config)
-    llama_model.print_trainable_parameters()
-    llama_model = llama_model.cuda()
+    model.print_trainable_parameters()
+    model = model.cuda()
     model.config.pad_token_id = tokenizer.pad_token_id
     model.config.pad_token_id = tokenizer.pad_token_id
     model.config.use_cache = False
     model.config.pretraining_tp = 1
 
-    return llama_model
+    return model
 
 
 
-def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_weights, neg_weights,num_epochs = 5):
+def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, llama_tokenizer, class_weights, seed, num_epochs = 5):
     lr = 1e-4
     batch_size = 16
-    
     training_args = TrainingArguments(
         output_dir = 'QCnoPrompt{}'.format(seed),
         learning_rate = 1e-4,
@@ -239,18 +238,17 @@ def train_llama(llama_model, llama_tokenized_datasets, llama_data_collator, pos_
         load_best_model_at_end = True
     )
     trainer = CustomTrainer(
-        model = model,
+        model = llama_model,
         args = training_args,
-        train_dataset = dataset['train'],
-        eval_dataset = dataset['val'],
-        tokenizer = tokenizer,
-        data_collator = collate_fn,
+        train_dataset = llama_tokenized_datasets['train'],
+        eval_dataset = llama_tokenized_datasets['test'],
+        tokenizer = llama_tokenizer,
+        data_collator = llama_data_collator,
         compute_metrics = compute_metrics,
         class_weights=class_weights,
 )
-    llama_trainer.add_callback(CustomCallback(llama_trainer))
-    llama_trainer.train()
-    return llama_trainer
+    trainer.train()
+    return trainer
 
 
 
